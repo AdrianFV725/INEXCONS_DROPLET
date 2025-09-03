@@ -79,34 +79,47 @@ sudo rm -f /etc/apt/sources.list.d/ondrej-ubuntu-php-oracular.sources
 sudo rm -f /etc/apt/sources.list.d/ondrej-php.list
 
 if [[ "$UBUNTU_VERSION" == "24.10" ]]; then
-    print_warning "Ubuntu 24.10 (Oracular) detectado. Usando método alternativo..."
+    print_warning "Ubuntu 24.10 (Oracular) detectado. Usando repositorio de Ondrej con Noble..."
     
-    # Método 1: Intentar usar PHP del repositorio oficial de Ubuntu
-    print_status "Intentando instalar PHP desde repositorios oficiales..."
-    sudo apt update
+    # Crear directorio para claves si no existe
+    sudo mkdir -p /etc/apt/keyrings
     
-    if apt-cache show php8.2 > /dev/null 2>&1; then
-        print_success "PHP 8.2 disponible en repositorios oficiales"
-        sudo apt install -y php8.2 php8.2-fpm php8.2-mysql php8.2-mbstring php8.2-xml php8.2-curl php8.2-zip php8.2-intl php8.2-bcmath php8.2-gd php8.2-sqlite3
-    else
-        # Método 2: Usar repositorio de Noble con configuración moderna
-        print_status "Configurando repositorio de Ondrej para Noble..."
-        
-        # Crear el archivo de repositorio moderno
-        sudo tee /etc/apt/sources.list.d/ondrej-php.sources > /dev/null << EOF
+    # Configurar repositorio de Ondrej usando Noble (Ubuntu 24.04)
+    print_status "Configurando repositorio de Ondrej para Noble..."
+    
+    # Crear el archivo de repositorio moderno
+    sudo tee /etc/apt/sources.list.d/ondrej-php.sources > /dev/null << EOF
 Types: deb
 URIs: http://ppa.launchpad.net/ondrej/php/ubuntu
 Suites: noble
 Components: main
 Signed-By: /etc/apt/keyrings/ondrej-php.gpg
 EOF
-        
-        # Descargar y instalar la clave GPG de manera moderna
-        curl -fsSL https://keyserver.ubuntu.com/pks/lookup?op=get\&search=0x4f4ea0aae5267a6c | sudo gpg --dearmor -o /etc/apt/keyrings/ondrej-php.gpg
-        
-        sudo apt update
-        sudo apt install -y php8.2 php8.2-fpm php8.2-mysql php8.2-mbstring php8.2-xml php8.2-curl php8.2-zip php8.2-intl php8.2-bcmath php8.2-gd php8.2-sqlite3
+    
+    # Método alternativo para obtener la clave GPG
+    print_status "Descargando clave GPG de Ondrej..."
+    
+    # Intentar múltiples métodos para obtener la clave
+    if ! curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x4f4ea0aae5267a6c" | sudo gpg --dearmor -o /etc/apt/keyrings/ondrej-php.gpg 2>/dev/null; then
+        print_status "Método 1 falló, intentando método 2..."
+        if ! wget -qO- "https://packages.sury.org/php/apt.gpg" | sudo gpg --dearmor -o /etc/apt/keyrings/ondrej-php.gpg 2>/dev/null; then
+            print_status "Método 2 falló, intentando método 3..."
+            sudo gpg --keyserver keyserver.ubuntu.com --recv-keys 4F4EA0AAE5267A6C
+            sudo gpg --export 4F4EA0AAE5267A6C | sudo gpg --dearmor -o /etc/apt/keyrings/ondrej-php.gpg
+        fi
     fi
+    
+    # Verificar que la clave se instaló
+    if [ ! -f /etc/apt/keyrings/ondrej-php.gpg ]; then
+        print_error "No se pudo instalar la clave GPG"
+        exit 1
+    fi
+    
+    print_status "Actualizando lista de paquetes..."
+    sudo apt update
+    
+    print_status "Instalando PHP 8.2 desde repositorio de Ondrej..."
+    sudo apt install -y php8.2 php8.2-fpm php8.2-mysql php8.2-mbstring php8.2-xml php8.2-curl php8.2-zip php8.2-intl php8.2-bcmath php8.2-gd php8.2-sqlite3
 else
     # Para otras versiones, usar el método normal
     sudo add-apt-repository ppa:ondrej/php -y
