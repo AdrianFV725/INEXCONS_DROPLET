@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none">
+  <!-- Fondo del logo - rombo exterior en gris oscuro -->
+  <polygon points="16,2 30,16 16,30 2,16" fill="#4A4A4A" />
+  
+  <!-- Rombo intermedio en verde elegante -->
+  <polygon points="16,6 26,16 16,26 6,16" fill="#2E7D32" />
+  
+  <!-- Rombo interior en gris claro -->
+  <polygon points="16,10 22,16 16,22 10,16" fill="#E0E0E0" />
+  
+  <!-- Texto "INEX" en el centro -->
+  <text x="16" y="17" font-family="Arial" font-weight="bold" font-size="3" fill="#333333" text-anchor="middle">INEX</text>
+  
+  <!-- Texto "CONS" debajo -->
+  <text x="16" y="20" font-family="Arial" font-weight="bold" font-size="2.5" fill="#333333" text-anchor="middle">CONS</text>
+</svg> 

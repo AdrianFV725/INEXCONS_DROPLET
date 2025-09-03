@@ -1,0 +1,141 @@
+/* Estilos para tarjetas */
+.card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    margin-bottom: 16px;
+    overflow: hidden;
+}
+
+/* Estilos para tarjetas de proyecto */
+.project-card {
+    padding: 16px;
+}
+
+.project-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.project-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #333;
+}
+
+.project-dates {
+    font-size: 14px;
+    color: #666;
+}
+
+/* Estilos para montos */
+.amount-container {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.amount-item {
+    text-align: center;
+    padding: 12px;
+    border-radius: 8px;
+    background: #f8f9fa;
+}
+
+.amount-label {
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 4px;
+}
+
+.amount-value {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.amount-value.total {
+    color: #333;
+}
+
+.amount-value.paid {
+    color: #22c55e;
+}
+
+.amount-value.pending {
+    color: #ef4444;
+}
+
+/* Estilos para móvil */
+@media (max-width: 768px) {
+    .card {
+        margin: 12px 0;
+    }
+
+    .project-card {
+        padding: 16px;
+    }
+
+    .project-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .project-dates {
+        margin-top: 4px;
+    }
+
+    .amount-container {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .amount-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 16px;
+    }
+
+    .amount-label {
+        margin-bottom: 0;
+    }
+
+    /* Ajustes para documentos */
+    .document-list {
+        margin-top: 16px;
+    }
+
+    .document-item {
+        display: flex;
+        align-items: center;
+        padding: 12px;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .document-icon {
+        margin-right: 12px;
+    }
+
+    .document-info {
+        flex: 1;
+    }
+
+    .document-name {
+        font-size: 14px;
+        color: #333;
+        margin-bottom: 4px;
+    }
+
+    .document-size {
+        font-size: 12px;
+        color: #666;
+    }
+
+    .document-actions {
+        display: flex;
+        gap: 12px;
+    }
+} 

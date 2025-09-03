@@ -1,0 +1,136 @@
+/* Estilos para la vista de semanas */
+.weeks-container {
+    width: 100%;
+    overflow-x: hidden;
+}
+
+.week-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.week-header {
+    background: #f8f9fa;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.week-header th {
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+    color: #333;
+}
+
+.week-row {
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.week-row:last-child {
+    border-bottom: none;
+}
+
+.week-cell {
+    padding: 12px;
+    color: #333;
+}
+
+.week-number {
+    font-weight: 600;
+    color: #6366f1;
+}
+
+.week-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #6366f1;
+    color: white;
+    margin-left: 8px;
+}
+
+/* Estilos para móvil */
+@media (max-width: 768px) {
+    .week-table {
+        display: block;
+    }
+
+    .week-header {
+        display: none; /* Ocultamos el encabezado en móvil */
+    }
+
+    .week-row {
+        display: flex;
+        flex-direction: column;
+        padding: 16px;
+        border-bottom: 1px solid #e0e0e0;
+        position: relative;
+    }
+
+    .week-cell {
+        padding: 8px 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    /* Añadimos etiquetas para cada campo */
+    .week-cell::before {
+        content: attr(data-label);
+        font-weight: 500;
+        color: #666;
+        width: 100px;
+    }
+
+    .week-number {
+        display: flex;
+        align-items: center;
+        font-size: 16px;
+    }
+
+    .week-dates {
+        font-size: 14px;
+        color: #666;
+    }
+
+    .week-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    /* Estilo para el botón de eliminar año */
+    .delete-year-button {
+        width: 100%;
+        margin: 16px 0;
+        padding: 12px;
+        border-radius: 8px;
+        background: #fee2e2;
+        color: #ef4444;
+        border: 1px solid #fecaca;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        font-weight: 500;
+    }
+
+    .delete-year-button:hover {
+        background: #fecaca;
+    }
+
+    /* Estilo para el selector de año */
+    .year-selector {
+        width: 100%;
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+        margin-bottom: 16px;
+        background: white;
+        font-size: 16px;
+    }
+} 

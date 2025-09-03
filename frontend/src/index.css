@@ -1,0 +1,209 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Estilos para mejorar la visualización de las opciones en los selects */
+select option {
+  white-space: normal;
+  word-wrap: break-word;
+  text-overflow: ellipsis;
+  padding: 8px;
+}
+
+/* Estilos globales para mejorar la responsividad */
+.table-container {
+  width: 100%;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Asegurar que los dropdowns sean visibles */
+.dropdown-menu {
+  position: absolute;
+  z-index: 9999;
+}
+
+/* Ajustes para tablas responsivas */
+table {
+  width: 100%;
+  table-layout: auto;
+}
+
+@media (max-width: 640px) {
+  .table-responsive th,
+  .table-responsive td {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    font-size: 0.75rem;
+  }
+}
+
+/* Ajustes para formularios responsivos */
+input, select, textarea {
+  max-width: 100%;
+}
+
+/* Ajustes para contenedores de tarjetas */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+/* Ajustes para botones en móvil */
+@media (max-width: 640px) {
+  .btn-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  
+  .btn-group > * {
+    flex: 1 1 auto;
+    min-width: 120px;
+  }
+}
+
+/* Asegurar que los modales sean responsivos */
+.modal-content {
+  width: 100%;
+  max-width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* Ajustes para contenido que se desborda */
+.text-ellipsis {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Asegurar que las imágenes sean responsivas */
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Estilos para modales responsivos */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 50;
+  padding: 1rem;
+}
+
+.modal-container {
+  background-color: white;
+  border-radius: 0.5rem;
+  max-width: 100%;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+@media (min-width: 640px) {
+  .modal-container {
+    width: 90%;
+    max-width: 600px;
+  }
+}
+
+@media (min-width: 768px) {
+  .modal-container {
+    width: 80%;
+    max-width: 700px;
+  }
+}
+
+/* Estilos para formularios responsivos */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .form-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.form-grid .full-width {
+  grid-column: 1 / -1;
+}
+
+/* Estilos para tabs responsivos */
+.tabs-container {
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Firefox */
+}
+
+.tabs-container::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Edge */
+}
+
+.tab {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+
+.tab.active {
+  border-bottom-color: #4f46e5;
+  color: #4f46e5;
+}
+
+/* Estilos para paneles de estadísticas responsivos */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+/* Ajustes para tablas en dispositivos muy pequeños */
+@media (max-width: 480px) {
+  .table-xs-stack thead {
+    display: none;
+  }
+  
+  .table-xs-stack tr {
+    display: block;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 0.5rem 0;
+  }
+  
+  .table-xs-stack td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.25rem 0.5rem;
+    text-align: right;
+  }
+  
+  .table-xs-stack td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    text-align: left;
+  }
+}
