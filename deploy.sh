@@ -67,16 +67,61 @@ sudo apt update && sudo apt upgrade -y
 print_status "🔧 Instalando dependencias del sistema..."
 sudo apt install -y curl wget git unzip software-properties-common apt-transport-https lsb-release ca-certificates
 
-# Instalar PHP 8.2
-print_status "🐘 Instalando PHP 8.2..."
-# Verificar la versión de Ubuntu
-UBUNTU_VERSION=$(lsb_release -rs)
-print_status "Versión de Ubuntu detectada: $UBUNTU_VERSION"
+# Verificar e instalar PHP
+print_status "🐘 Verificando instalación de PHP..."
 
-# Limpiar repositorios problemáticos primero
-print_status "🧹 Limpiando repositorios problemáticos..."
-sudo rm -f /etc/apt/sources.list.d/ondrej-ubuntu-php-oracular.sources
-sudo rm -f /etc/apt/sources.list.d/ondrej-php.list
+# Verificar si PHP ya está instalado
+if command -v php >/dev/null 2>&1; then
+    PHP_VERSION=$(php --version | head -1 | cut -d' ' -f2 | cut -d'.' -f1,2)
+    print_success "✅ PHP $PHP_VERSION ya está instalado"
+    php --version | head -1
+    
+    # Verificar que sea una versión compatible (8.1+)
+    if [[ $(echo "$PHP_VERSION >= 8.1" | bc 2>/dev/null || echo "0") == "1" ]] || [[ "$PHP_VERSION" =~ ^8\.[1-9] ]]; then
+        print_success "✅ Versión de PHP compatible detectada"
+        PHP_CMD="php"
+        
+        # Verificar extensiones necesarias
+        print_status "🔍 Verificando extensiones de PHP..."
+        MISSING_EXTENSIONS=()
+        
+        for ext in curl gd intl mbstring mysql sqlite3 xml zip bcmath; do
+            if ! php -m | grep -qi "^$ext$"; then
+                MISSING_EXTENSIONS+=("$ext")
+            fi
+        done
+        
+        if [ ${#MISSING_EXTENSIONS[@]} -gt 0 ]; then
+            print_warning "⚠️ Faltan algunas extensiones: ${MISSING_EXTENSIONS[*]}"
+            print_status "Intentando instalar extensiones faltantes..."
+            
+            # Intentar instalar extensiones para PHP 8.3
+            for ext in "${MISSING_EXTENSIONS[@]}"; do
+                sudo apt install -y "php8.3-$ext" 2>/dev/null || sudo apt install -y "php-$ext" 2>/dev/null || true
+            done
+        else
+            print_success "✅ Todas las extensiones necesarias están instaladas"
+        fi
+        
+        SKIP_PHP_INSTALL=true
+    else
+        print_warning "⚠️ Versión de PHP antigua detectada ($PHP_VERSION). Se instalará PHP 8.2"
+        SKIP_PHP_INSTALL=false
+    fi
+else
+    print_status "PHP no está instalado. Procediendo con instalación de PHP 8.2..."
+    SKIP_PHP_INSTALL=false
+fi
+
+if [ "$SKIP_PHP_INSTALL" = false ]; then
+    # Verificar la versión de Ubuntu
+    UBUNTU_VERSION=$(lsb_release -rs)
+    print_status "Versión de Ubuntu detectada: $UBUNTU_VERSION"
+
+    # Limpiar repositorios problemáticos primero
+    print_status "🧹 Limpiando repositorios problemáticos..."
+    sudo rm -f /etc/apt/sources.list.d/ondrej-ubuntu-php-oracular.sources
+    sudo rm -f /etc/apt/sources.list.d/ondrej-php.list
 
 if [[ "$UBUNTU_VERSION" == "24.10" ]]; then
     print_warning "Ubuntu 24.10 (Oracular) detectado. Usando repositorio de Ondrej con Noble..."
@@ -125,22 +170,35 @@ else
     sudo add-apt-repository ppa:ondrej/php -y
     sudo apt update
     sudo apt install -y php8.2 php8.2-fpm php8.2-mysql php8.2-mbstring php8.2-xml php8.2-curl php8.2-zip php8.2-intl php8.2-bcmath php8.2-gd php8.2-sqlite3
+    fi
+
+    # Verificar instalación de PHP
+    if php8.2 --version > /dev/null 2>&1; then
+        print_success "✅ PHP 8.2 instalado correctamente"
+        php8.2 --version | head -1
+        PHP_CMD="php8.2"
+    else
+        print_error "❌ Error instalando PHP 8.2"
+        exit 1
+    fi
+else
+    print_success "✅ Usando PHP existente en el sistema"
 fi
 
-# Verificar instalación de PHP
-if php8.2 --version > /dev/null 2>&1; then
-    print_success "✅ PHP 8.2 instalado correctamente"
-    php8.2 --version | head -1
-else
-    print_error "❌ Error instalando PHP 8.2"
-    exit 1
+# Configurar comando PHP a usar
+if [ -z "$PHP_CMD" ]; then
+    PHP_CMD="php"
 fi
+
+print_status "🔧 Comando PHP a usar: $PHP_CMD"
 
 # Instalar Composer
 print_status "🎼 Instalando Composer..."
-curl -sS https://getcomposer.org/installer | php
+$PHP_CMD -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+$PHP_CMD composer-setup.php
 sudo mv composer.phar /usr/local/bin/composer
 sudo chmod +x /usr/local/bin/composer
+rm -f composer-setup.php
 
 # Instalar Node.js 18
 print_status "🟢 Instalando Node.js 18..."
@@ -193,18 +251,18 @@ if [ ! -f .env ]; then
 fi
 
 # Generar clave de aplicación
-php artisan key:generate
+$PHP_CMD artisan key:generate
 
 # Crear base de datos SQLite
 touch database/database.sqlite
 
 # Ejecutar migraciones
-php artisan migrate --force
+$PHP_CMD artisan migrate --force
 
 # Optimizar Laravel para producción
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
+$PHP_CMD artisan config:cache
+$PHP_CMD artisan route:cache
+$PHP_CMD artisan view:cache
 
 # Configurar permisos
 sudo chown -R www-data:www-data $PROJECT_DIR/backend/storage $PROJECT_DIR/backend/bootstrap/cache
@@ -327,9 +385,10 @@ print_status "🔧 Creando servicios systemd..."
 sudo cp $PROJECT_DIR/services/inexcons-backend.service /etc/systemd/system/
 sudo cp $PROJECT_DIR/services/inexcons-frontend.service /etc/systemd/system/
 
-# Actualizar las rutas en los archivos de servicio
+# Actualizar las rutas y comando PHP en los archivos de servicio
 sudo sed -i "s|/mnt/volume_nyc1_01/inexcons|$PROJECT_DIR|g" /etc/systemd/system/inexcons-backend.service
 sudo sed -i "s|/mnt/volume_nyc1_01/inexcons|$PROJECT_DIR|g" /etc/systemd/system/inexcons-frontend.service
+sudo sed -i "s|/usr/bin/php|$(which $PHP_CMD)|g" /etc/systemd/system/inexcons-backend.service
 
 # Establecer permisos correctos
 sudo chmod 644 /etc/systemd/system/inexcons-backend.service
@@ -477,10 +536,10 @@ git pull origin main
 # Actualizar backend
 cd \$PROJECT_DIR/backend
 composer install --no-dev --optimize-autoloader
-php artisan migrate --force
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
+\$(which php) artisan migrate --force
+\$(which php) artisan config:cache
+\$(which php) artisan route:cache
+\$(which php) artisan view:cache
 
 # Actualizar frontend
 cd \$PROJECT_DIR/frontend
