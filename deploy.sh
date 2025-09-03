@@ -73,18 +73,55 @@ print_status "🐘 Instalando PHP 8.2..."
 UBUNTU_VERSION=$(lsb_release -rs)
 print_status "Versión de Ubuntu detectada: $UBUNTU_VERSION"
 
+# Limpiar repositorios problemáticos primero
+print_status "🧹 Limpiando repositorios problemáticos..."
+sudo rm -f /etc/apt/sources.list.d/ondrej-ubuntu-php-oracular.sources
+sudo rm -f /etc/apt/sources.list.d/ondrej-php.list
+
 if [[ "$UBUNTU_VERSION" == "24.10" ]]; then
-    print_warning "Ubuntu 24.10 (Oracular) detectado. Usando repositorio alternativo..."
-    # Para Ubuntu 24.10, usar el repositorio de 24.04 (Noble) que es compatible
-    echo "deb http://ppa.launchpad.net/ondrej/php/ubuntu noble main" | sudo tee /etc/apt/sources.list.d/ondrej-php.list
-    sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 4F4EA0AAE5267A6C
+    print_warning "Ubuntu 24.10 (Oracular) detectado. Usando método alternativo..."
+    
+    # Método 1: Intentar usar PHP del repositorio oficial de Ubuntu
+    print_status "Intentando instalar PHP desde repositorios oficiales..."
+    sudo apt update
+    
+    if apt-cache show php8.2 > /dev/null 2>&1; then
+        print_success "PHP 8.2 disponible en repositorios oficiales"
+        sudo apt install -y php8.2 php8.2-fpm php8.2-mysql php8.2-mbstring php8.2-xml php8.2-curl php8.2-zip php8.2-intl php8.2-bcmath php8.2-gd php8.2-sqlite3
+    else
+        # Método 2: Usar repositorio de Noble con configuración moderna
+        print_status "Configurando repositorio de Ondrej para Noble..."
+        
+        # Crear el archivo de repositorio moderno
+        sudo tee /etc/apt/sources.list.d/ondrej-php.sources > /dev/null << EOF
+Types: deb
+URIs: http://ppa.launchpad.net/ondrej/php/ubuntu
+Suites: noble
+Components: main
+Signed-By: /etc/apt/keyrings/ondrej-php.gpg
+EOF
+        
+        # Descargar y instalar la clave GPG de manera moderna
+        curl -fsSL https://keyserver.ubuntu.com/pks/lookup?op=get\&search=0x4f4ea0aae5267a6c | sudo gpg --dearmor -o /etc/apt/keyrings/ondrej-php.gpg
+        
+        sudo apt update
+        sudo apt install -y php8.2 php8.2-fpm php8.2-mysql php8.2-mbstring php8.2-xml php8.2-curl php8.2-zip php8.2-intl php8.2-bcmath php8.2-gd php8.2-sqlite3
+    fi
 else
     # Para otras versiones, usar el método normal
     sudo add-apt-repository ppa:ondrej/php -y
+    sudo apt update
+    sudo apt install -y php8.2 php8.2-fpm php8.2-mysql php8.2-mbstring php8.2-xml php8.2-curl php8.2-zip php8.2-intl php8.2-bcmath php8.2-gd php8.2-sqlite3
 fi
 
-sudo apt update
-sudo apt install -y php8.2 php8.2-fpm php8.2-mysql php8.2-mbstring php8.2-xml php8.2-curl php8.2-zip php8.2-intl php8.2-bcmath php8.2-gd php8.2-sqlite3
+# Verificar instalación de PHP
+if php8.2 --version > /dev/null 2>&1; then
+    print_success "✅ PHP 8.2 instalado correctamente"
+    php8.2 --version | head -1
+else
+    print_error "❌ Error instalando PHP 8.2"
+    exit 1
+fi
 
 # Instalar Composer
 print_status "🎼 Instalando Composer..."
