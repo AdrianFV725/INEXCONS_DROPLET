@@ -69,7 +69,20 @@ sudo apt install -y curl wget git unzip software-properties-common apt-transport
 
 # Instalar PHP 8.2
 print_status "🐘 Instalando PHP 8.2..."
-sudo add-apt-repository ppa:ondrej/php -y
+# Verificar la versión de Ubuntu
+UBUNTU_VERSION=$(lsb_release -rs)
+print_status "Versión de Ubuntu detectada: $UBUNTU_VERSION"
+
+if [[ "$UBUNTU_VERSION" == "24.10" ]]; then
+    print_warning "Ubuntu 24.10 (Oracular) detectado. Usando repositorio alternativo..."
+    # Para Ubuntu 24.10, usar el repositorio de 24.04 (Noble) que es compatible
+    echo "deb http://ppa.launchpad.net/ondrej/php/ubuntu noble main" | sudo tee /etc/apt/sources.list.d/ondrej-php.list
+    sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 4F4EA0AAE5267A6C
+else
+    # Para otras versiones, usar el método normal
+    sudo add-apt-repository ppa:ondrej/php -y
+fi
+
 sudo apt update
 sudo apt install -y php8.2 php8.2-fpm php8.2-mysql php8.2-mbstring php8.2-xml php8.2-curl php8.2-zip php8.2-intl php8.2-bcmath php8.2-gd php8.2-sqlite3
 
@@ -84,9 +97,8 @@ print_status "🟢 Instalando Node.js 18..."
 curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
 sudo apt install -y nodejs
 
-# Instalar PM2 para manejar procesos Node.js
-print_status "⚡ Instalando PM2..."
-sudo npm install -g pm2
+# PM2 no es necesario - usaremos systemd para gestión de servicios
+print_status "ℹ️ Usaremos systemd para gestión de servicios en lugar de PM2"
 
 # Instalar Nginx
 print_status "🌐 Instalando Nginx..."
@@ -258,47 +270,27 @@ EOF
 # Construir el frontend para producción
 npm run build
 
-# Crear archivo de servicio systemd para Laravel
-print_status "🔧 Creando servicio systemd para Laravel..."
-sudo tee /etc/systemd/system/inexcons-backend.service > /dev/null << EOF
-[Unit]
-Description=INEXCONS Laravel Backend
-After=network.target
+# Crear archivos de servicio systemd
+print_status "🔧 Creando servicios systemd..."
 
-[Service]
-Type=simple
-User=www-data
-Group=www-data
-WorkingDirectory=$PROJECT_DIR/backend
-ExecStart=/usr/bin/php artisan serve --host=0.0.0.0 --port=$BACKEND_PORT
-Restart=always
-RestartSec=3
-Environment=PHP_CLI_SERVER_WORKERS=4
+# Copiar archivos de servicio
+sudo cp $PROJECT_DIR/services/inexcons-backend.service /etc/systemd/system/
+sudo cp $PROJECT_DIR/services/inexcons-frontend.service /etc/systemd/system/
 
-[Install]
-WantedBy=multi-user.target
-EOF
+# Actualizar las rutas en los archivos de servicio
+sudo sed -i "s|/mnt/volume_nyc1_01/inexcons|$PROJECT_DIR|g" /etc/systemd/system/inexcons-backend.service
+sudo sed -i "s|/mnt/volume_nyc1_01/inexcons|$PROJECT_DIR|g" /etc/systemd/system/inexcons-frontend.service
 
-# Crear configuración de PM2 para el frontend
-print_status "🔧 Creando configuración PM2 para React..."
-cat > $PROJECT_DIR/frontend/ecosystem.config.js << EOF
-module.exports = {
-  apps: [{
-    name: 'inexcons-frontend',
-    cwd: '$PROJECT_DIR/frontend',
-    script: 'npm',
-    args: 'run preview',
-    instances: 1,
-    autorestart: true,
-    watch: false,
-    max_memory_restart: '1G',
-    env: {
-      NODE_ENV: 'production',
-      PORT: $FRONTEND_PORT
-    }
-  }]
-};
-EOF
+# Establecer permisos correctos
+sudo chmod 644 /etc/systemd/system/inexcons-backend.service
+sudo chmod 644 /etc/systemd/system/inexcons-frontend.service
+
+# Configurar package.json para preview del frontend
+print_status "🔧 Configurando scripts de producción para React..."
+cd $PROJECT_DIR/frontend
+
+# Asegurar que el script preview esté configurado correctamente
+npm pkg set scripts.preview="vite preview --host 0.0.0.0 --port $FRONTEND_PORT"
 
 # Configurar Nginx
 print_status "🌐 Configurando Nginx..."
@@ -375,20 +367,37 @@ sudo nginx -t
 # Iniciar y habilitar servicios
 print_status "🚀 Iniciando servicios..."
 
-# Habilitar y iniciar servicio de Laravel
+# Recargar configuración de systemd
 sudo systemctl daemon-reload
+
+# Habilitar y iniciar servicio de Laravel
 sudo systemctl enable inexcons-backend
 sudo systemctl start inexcons-backend
 
-# Iniciar frontend con PM2
-cd $PROJECT_DIR/frontend
-pm2 start ecosystem.config.js
-pm2 save
-pm2 startup
+# Habilitar y iniciar servicio de React
+sudo systemctl enable inexcons-frontend
+sudo systemctl start inexcons-frontend
 
 # Reiniciar Nginx
 sudo systemctl restart nginx
 sudo systemctl enable nginx
+
+# Verificar que los servicios estén funcionando
+sleep 5
+print_status "🔍 Verificando estado de servicios..."
+if systemctl is-active --quiet inexcons-backend; then
+    print_success "✅ Backend service está activo"
+else
+    print_error "❌ Backend service falló al iniciar"
+    sudo journalctl -u inexcons-backend --no-pager -l
+fi
+
+if systemctl is-active --quiet inexcons-frontend; then
+    print_success "✅ Frontend service está activo"
+else
+    print_error "❌ Frontend service falló al iniciar"
+    sudo journalctl -u inexcons-frontend --no-pager -l
+fi
 
 # Configurar firewall
 print_status "🔥 Configurando firewall..."
@@ -430,7 +439,7 @@ npm run build
 
 # Reiniciar servicios
 sudo systemctl restart inexcons-backend
-pm2 restart inexcons-frontend
+sudo systemctl restart inexcons-frontend
 sudo systemctl reload nginx
 
 echo "✅ Actualización completada!"
@@ -438,14 +447,24 @@ EOF
 
 chmod +x $PROJECT_DIR/update.sh
 
+# Hacer ejecutables los scripts de administración
+print_status "🔧 Configurando scripts de administración..."
+chmod +x $PROJECT_DIR/inexcons-control.sh
+chmod +x $PROJECT_DIR/maintenance.sh
+
 # Crear enlaces simbólicos para fácil acceso
 print_status "🔗 Creando enlaces simbólicos..."
 sudo ln -sf $PROJECT_DIR/update.sh /usr/local/bin/inexcons-update
+sudo ln -sf $PROJECT_DIR/inexcons-control.sh /usr/local/bin/inexcons-control
+sudo ln -sf $PROJECT_DIR/maintenance.sh /usr/local/bin/inexcons-maintenance
 
 # Mostrar estado de servicios
 print_status "📊 Estado de los servicios:"
+echo "Backend (Laravel):"
 sudo systemctl status inexcons-backend --no-pager -l
-pm2 status
+echo -e "\nFrontend (React):"
+sudo systemctl status inexcons-frontend --no-pager -l
+echo -e "\nNginx:"
 sudo systemctl status nginx --no-pager -l
 
 # Mostrar información del volumen
@@ -456,7 +475,10 @@ print_success "🎉 ¡Despliegue completado exitosamente!"
 print_success "🌐 Tu aplicación está disponible en: http://$DROPLET_IP"
 print_success "📁 Proyecto instalado en: $PROJECT_DIR"
 print_success "💾 Usando volumen: $VOLUME_PATH"
-print_success "🔄 Comando rápido de actualización: inexcons-update"
+print_success "🔄 Comandos rápidos disponibles:"
+echo "  • inexcons-update     - Actualizar aplicación"
+echo "  • inexcons-control    - Controlar servicios"
+echo "  • inexcons-maintenance - Mantenimiento del sistema"
 
 print_status "📋 Información del despliegue:"
 echo "  • Frontend: Servido por Nginx en puerto 80"
@@ -465,8 +487,15 @@ echo "  • Base de datos: SQLite en $PROJECT_DIR/backend/database/database.sqli
 echo "  • Backups: $VOLUME_PATH/backups/inexcons/"
 echo "  • Logs de Nginx: /var/log/nginx/${PROJECT_NAME}_*.log"
 echo "  • Logs de Laravel: $PROJECT_DIR/backend/storage/logs/"
-echo "  • Comando para ver logs del backend: sudo journalctl -u inexcons-backend -f"
-echo "  • Comando para ver logs del frontend: pm2 logs inexcons-frontend"
+echo ""
+echo "📟 Comandos útiles para administración:"
+echo "  • Ver logs del backend: sudo journalctl -u inexcons-backend -f"
+echo "  • Ver logs del frontend: sudo journalctl -u inexcons-frontend -f"
+echo "  • Reiniciar backend: sudo systemctl restart inexcons-backend"
+echo "  • Reiniciar frontend: sudo systemctl restart inexcons-frontend"
+echo "  • Estado de servicios: sudo systemctl status inexcons-backend inexcons-frontend nginx"
+echo "  • Habilitar servicios: sudo systemctl enable inexcons-backend inexcons-frontend"
+echo "  • Deshabilitar servicios: sudo systemctl disable inexcons-backend inexcons-frontend"
 
 print_warning "🔒 Recuerda:"
 echo "  • Cambiar las credenciales por defecto"

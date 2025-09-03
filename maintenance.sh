@@ -1,16 +1,20 @@
 #!/bin/bash
 
 # Script de mantenimiento para INEXCONS
-# Ejecutar semanalmente para mantener el sistema optimizado
-
-set -e
+# Incluye backups, limpieza de logs, y verificación del sistema
 
 # Colores para output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m'
+NC='\033[0m' # No Color
+
+# Variables de configuración
+VOLUME_PATH="/mnt/volume_nyc1_01"
+PROJECT_DIR="$VOLUME_PATH/inexcons"
+BACKUP_DIR="$VOLUME_PATH/backups/inexcons"
+LOG_DIR="$PROJECT_DIR/backend/storage/logs"
 
 print_status() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -24,162 +28,220 @@ print_warning() {
     echo -e "${YELLOW}[WARNING]${NC} $1"
 }
 
-VOLUME_PATH="/mnt/volume_nyc1_01"
-PROJECT_DIR="$VOLUME_PATH/inexcons"
-BACKUP_DIR="$VOLUME_PATH/backups/inexcons"
-LOG_FILE="$VOLUME_PATH/logs/inexcons-maintenance.log"
-
-# Función para logging
-log() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> $LOG_FILE
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
 }
 
-print_status "🔧 Iniciando mantenimiento de INEXCONS..."
-log "Iniciando mantenimiento"
+# Función para hacer backup de la base de datos
+backup_database() {
+    local timestamp=$(date +%Y%m%d_%H%M%S)
+    local backup_file="$BACKUP_DIR/database_$timestamp.sqlite"
+    
+    print_status "💾 Creando backup de la base de datos..."
+    
+    # Crear directorio de backup si no existe
+    sudo mkdir -p $BACKUP_DIR
+    
+    # Copiar base de datos
+    if [ -f "$PROJECT_DIR/backend/database/database.sqlite" ]; then
+        sudo cp "$PROJECT_DIR/backend/database/database.sqlite" "$backup_file"
+        sudo chown root:root "$backup_file"
+        sudo chmod 644 "$backup_file"
+        print_success "Backup creado: $backup_file"
+        
+        # Verificar integridad del backup
+        if sqlite3 "$backup_file" "PRAGMA integrity_check;" | grep -q "ok"; then
+            print_success "✅ Integridad del backup verificada"
+        else
+            print_error "❌ Error en la integridad del backup"
+            return 1
+        fi
+    else
+        print_error "❌ No se encontró la base de datos"
+        return 1
+    fi
+}
 
-# Crear directorios si no existen
-sudo mkdir -p $BACKUP_DIR
-sudo mkdir -p $VOLUME_PATH/logs
+# Función para limpiar backups antiguos (mantener últimos 10)
+cleanup_old_backups() {
+    print_status "🧹 Limpiando backups antiguos..."
+    
+    if [ -d "$BACKUP_DIR" ]; then
+        # Mantener solo los últimos 10 backups
+        cd "$BACKUP_DIR"
+        ls -t database_*.sqlite 2>/dev/null | tail -n +11 | xargs -r sudo rm -f
+        
+        local remaining=$(ls database_*.sqlite 2>/dev/null | wc -l)
+        print_success "Backups mantenidos: $remaining"
+    fi
+}
 
-# Backup de la base de datos
-print_status "💾 Creando backup de la base de datos..."
-BACKUP_FILE="$BACKUP_DIR/database_$(date +%Y%m%d_%H%M%S).sqlite"
-sudo cp $PROJECT_DIR/backend/database/database.sqlite $BACKUP_FILE
-log "Backup creado: $BACKUP_FILE"
+# Función para limpiar logs antiguos
+cleanup_logs() {
+    print_status "🧹 Limpiando logs antiguos..."
+    
+    # Limpiar logs de Laravel (mantener últimos 7 días)
+    if [ -d "$LOG_DIR" ]; then
+        find "$LOG_DIR" -name "*.log" -type f -mtime +7 -delete
+        print_success "Logs de Laravel limpiados"
+    fi
+    
+    # Limpiar logs de systemd (mantener últimos 30 días)
+    sudo journalctl --vacuum-time=30d
+    print_success "Logs de systemd limpiados"
+    
+    # Limpiar logs de nginx (comprimir logs antiguos)
+    sudo find /var/log/nginx -name "*.log" -type f -mtime +7 -exec gzip {} \;
+    sudo find /var/log/nginx -name "*.gz" -type f -mtime +30 -delete
+    print_success "Logs de Nginx limpiados"
+}
 
-# Limpiar backups antiguos (mantener solo los últimos 10)
-print_status "🧹 Limpiando backups antiguos..."
-cd $BACKUP_DIR
-sudo ls -t database_*.sqlite | tail -n +11 | sudo xargs -r rm
-log "Backups antiguos eliminados"
+# Función para verificar espacio en disco
+check_disk_space() {
+    print_status "💾 Verificando espacio en disco..."
+    
+    local usage=$(df -h "$VOLUME_PATH" | awk 'NR==2 {print $5}' | sed 's/%//')
+    
+    echo "Uso del volumen principal: ${usage}%"
+    
+    if [ "$usage" -gt 85 ]; then
+        print_warning "⚠️ Espacio en disco bajo: ${usage}%"
+        
+        # Mostrar directorios que más espacio ocupan
+        print_status "Directorios con mayor uso:"
+        sudo du -h "$PROJECT_DIR" | sort -hr | head -10
+        
+        return 1
+    else
+        print_success "✅ Espacio en disco adecuado: ${usage}%"
+    fi
+}
 
-# Limpiar logs de Laravel antiguos
-print_status "📝 Limpiando logs antiguos..."
-sudo find $PROJECT_DIR/backend/storage/logs/ -name "*.log" -mtime +30 -delete
-log "Logs antiguos eliminados"
+# Función para verificar servicios
+check_services() {
+    print_status "🔍 Verificando servicios..."
+    
+    local services=("inexcons-backend" "inexcons-frontend" "nginx")
+    local all_ok=true
+    
+    for service in "${services[@]}"; do
+        if systemctl is-active --quiet "$service"; then
+            print_success "✅ $service está activo"
+        else
+            print_error "❌ $service está inactivo"
+            all_ok=false
+        fi
+    done
+    
+    if [ "$all_ok" = true ]; then
+        print_success "✅ Todos los servicios están funcionando correctamente"
+    else
+        print_warning "⚠️ Algunos servicios requieren atención"
+        return 1
+    fi
+}
 
-# Limpiar cache de Laravel
-print_status "🗑️ Limpiando cache de Laravel..."
-cd $PROJECT_DIR/backend
-php artisan cache:clear
-php artisan view:clear
-php artisan route:cache
-php artisan config:cache
-log "Cache de Laravel limpiado"
+# Función para optimizar Laravel
+optimize_laravel() {
+    print_status "⚡ Optimizando Laravel..."
+    
+    cd "$PROJECT_DIR/backend"
+    
+    # Limpiar caché
+    sudo -u www-data php artisan cache:clear
+    sudo -u www-data php artisan config:clear
+    sudo -u www-data php artisan route:clear
+    sudo -u www-data php artisan view:clear
+    
+    # Regenerar caché
+    sudo -u www-data php artisan config:cache
+    sudo -u www-data php artisan route:cache
+    sudo -u www-data php artisan view:cache
+    
+    print_success "✅ Laravel optimizado"
+}
 
-# Optimizar base de datos SQLite
-print_status "⚡ Optimizando base de datos..."
-sqlite3 $PROJECT_DIR/backend/database/database.sqlite "VACUUM; ANALYZE;"
-log "Base de datos optimizada"
+# Función para verificar actualizaciones del sistema
+check_system_updates() {
+    print_status "🔄 Verificando actualizaciones del sistema..."
+    
+    sudo apt update > /dev/null 2>&1
+    local updates=$(apt list --upgradable 2>/dev/null | grep -c upgradable)
+    
+    if [ "$updates" -gt 0 ]; then
+        print_warning "⚠️ Hay $updates actualizaciones disponibles"
+        echo "Ejecuta 'sudo apt upgrade' para actualizar el sistema"
+    else
+        print_success "✅ Sistema actualizado"
+    fi
+}
 
-# Verificar estado de servicios
-print_status "🔍 Verificando estado de servicios..."
+# Función principal
+main() {
+    case "$1" in
+        backup)
+            backup_database
+            ;;
+        
+        cleanup)
+            cleanup_old_backups
+            cleanup_logs
+            ;;
+        
+        check)
+            check_disk_space
+            check_services
+            check_system_updates
+            ;;
+        
+        optimize)
+            optimize_laravel
+            ;;
+        
+        full)
+            print_status "🔧 Ejecutando mantenimiento completo..."
+            echo ""
+            
+            backup_database && \
+            cleanup_old_backups && \
+            cleanup_logs && \
+            check_disk_space && \
+            check_services && \
+            optimize_laravel && \
+            check_system_updates
+            
+            if [ $? -eq 0 ]; then
+                print_success "🎉 Mantenimiento completado exitosamente"
+            else
+                print_warning "⚠️ Mantenimiento completado con advertencias"
+            fi
+            ;;
+        
+        *)
+            echo "Script de mantenimiento para INEXCONS"
+            echo ""
+            echo "Uso: $0 [comando]"
+            echo ""
+            echo "Comandos disponibles:"
+            echo "  backup    - Crear backup de la base de datos"
+            echo "  cleanup   - Limpiar backups y logs antiguos"
+            echo "  check     - Verificar estado del sistema y servicios"
+            echo "  optimize  - Optimizar Laravel (limpiar y regenerar caché)"
+            echo "  full      - Ejecutar mantenimiento completo"
+            echo ""
+            echo "Ejemplos:"
+            echo "  $0 backup"
+            echo "  $0 full"
+            echo ""
+            exit 1
+            ;;
+    esac
+}
 
-# Verificar servicio de Laravel
-if sudo systemctl is-active --quiet inexcons-backend; then
-    print_success "✅ Servicio Laravel activo"
-    log "Servicio Laravel activo"
-else
-    print_warning "⚠️ Servicio Laravel inactivo, reiniciando..."
-    sudo systemctl restart inexcons-backend
-    log "Servicio Laravel reiniciado"
+# Verificar que el script se ejecute como root o con sudo
+if [ "$EUID" -ne 0 ] && [ -z "$SUDO_USER" ]; then
+    print_error "Este script requiere permisos de root o sudo"
+    exit 1
 fi
 
-# Verificar PM2
-if pm2 describe inexcons-frontend > /dev/null 2>&1; then
-    print_success "✅ Frontend PM2 activo"
-    log "Frontend PM2 activo"
-else
-    print_warning "⚠️ Frontend PM2 inactivo, reiniciando..."
-    cd $PROJECT_DIR/frontend
-    pm2 restart inexcons-frontend
-    log "Frontend PM2 reiniciado"
-fi
-
-# Verificar Nginx
-if sudo systemctl is-active --quiet nginx; then
-    print_success "✅ Nginx activo"
-    log "Nginx activo"
-else
-    print_warning "⚠️ Nginx inactivo, reiniciando..."
-    sudo systemctl restart nginx
-    log "Nginx reiniciado"
-fi
-
-# Verificar espacio en volumen
-print_status "💽 Verificando espacio en volumen..."
-VOLUME_USAGE=$(df $VOLUME_PATH | tail -1 | awk '{print $5}' | sed 's/%//')
-if [ $VOLUME_USAGE -gt 80 ]; then
-    print_warning "⚠️ Espacio en volumen bajo: ${VOLUME_USAGE}%"
-    log "Advertencia: Espacio en volumen bajo: ${VOLUME_USAGE}%"
-else
-    print_success "✅ Espacio en volumen OK: ${VOLUME_USAGE}%"
-    log "Espacio en volumen OK: ${VOLUME_USAGE}%"
-fi
-
-# Verificar memoria
-print_status "🧠 Verificando uso de memoria..."
-MEMORY_USAGE=$(free | grep Mem | awk '{printf "%.0f", $3/$2 * 100.0}')
-if [ $MEMORY_USAGE -gt 80 ]; then
-    print_warning "⚠️ Uso de memoria alto: ${MEMORY_USAGE}%"
-    log "Advertencia: Uso de memoria alto: ${MEMORY_USAGE}%"
-else
-    print_success "✅ Uso de memoria OK: ${MEMORY_USAGE}%"
-    log "Uso de memoria OK: ${MEMORY_USAGE}%"
-fi
-
-# Actualizar sistema (solo paquetes de seguridad)
-print_status "🔒 Actualizando paquetes de seguridad..."
-sudo apt update
-sudo apt upgrade -y --with-new-pkgs -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
-sudo apt autoremove -y
-sudo apt autoclean
-log "Sistema actualizado"
-
-# Generar reporte de estado
-print_status "📊 Generando reporte de estado..."
-REPORT_FILE="/tmp/inexcons-status-$(date +%Y%m%d_%H%M%S).txt"
-
-cat > $REPORT_FILE << EOF
-REPORTE DE ESTADO DE INEXCONS
-$(date)
-
-=== SERVICIOS ===
-Laravel Backend: $(sudo systemctl is-active inexcons-backend)
-Frontend PM2: $(pm2 describe inexcons-frontend > /dev/null 2>&1 && echo "active" || echo "inactive")
-Nginx: $(sudo systemctl is-active nginx)
-
-=== SISTEMA ===
-Uso de disco: ${DISK_USAGE}%
-Uso de memoria: ${MEMORY_USAGE}%
-Uptime: $(uptime -p)
-
-=== BASE DE DATOS ===
-Tamaño de BD: $(du -h $PROJECT_DIR/backend/database/database.sqlite | cut -f1)
-Último backup: $(ls -t $BACKUP_DIR/database_*.sqlite 2>/dev/null | head -1 | xargs -r basename)
-
-=== LOGS RECIENTES ===
-Últimas 5 líneas del log de Laravel:
-$(tail -5 $PROJECT_DIR/backend/storage/logs/laravel.log 2>/dev/null || echo "No hay logs recientes")
-
-Últimas 5 líneas del log de Nginx:
-$(sudo tail -5 /var/log/nginx/inexcons_access.log 2>/dev/null || echo "No hay logs recientes")
-EOF
-
-echo "📋 Reporte guardado en: $REPORT_FILE"
-log "Reporte generado: $REPORT_FILE"
-
-print_success "🎉 Mantenimiento completado exitosamente!"
-print_status "💾 Información del volumen:"
-df -h $VOLUME_PATH
-log "Mantenimiento completado"
-
-# Mostrar resumen
-echo ""
-echo "📋 RESUMEN DEL MANTENIMIENTO:"
-echo "  • Backup creado: $(basename $BACKUP_FILE)"
-echo "  • Espacio en disco: ${DISK_USAGE}%"
-echo "  • Uso de memoria: ${MEMORY_USAGE}%"
-echo "  • Servicios verificados y activos"
-echo "  • Sistema actualizado"
-echo "  • Reporte: $REPORT_FILE"
+main "$@"

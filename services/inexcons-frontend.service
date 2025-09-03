@@ -1,0 +1,34 @@
+[Unit]
+Description=INEXCONS React Frontend Service
+After=network.target inexcons-backend.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/mnt/volume_nyc1_01/inexcons/frontend
+ExecStart=/usr/bin/npm run preview
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+# Environment variables
+Environment=NODE_ENV=production
+Environment=PORT=5173
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=inexcons-frontend
+
+[Install]
+WantedBy=multi-user.target
