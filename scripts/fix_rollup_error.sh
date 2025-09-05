@@ -173,3 +173,5 @@ echo "  npm run dev"
 echo ""
 echo "💡 Si aún hay problemas con date pickers, los imports están comentados."
 echo "   Puedes usar inputs HTML5 nativos tipo 'date' temporalmente."
+
+
