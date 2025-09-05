@@ -1,0 +1,45 @@
+FROM php:8.2-apache
+
+# Instalar extensiones de PHP
+RUN apt-get update && apt-get install -y \
+    libpng-dev \
+    libjpeg-dev \
+    libfreetype6-dev \
+    zip \
+    unzip \
+    git \
+    sqlite3 \
+    libsqlite3-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install gd pdo pdo_sqlite
+
+# Instalar Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Configurar Apache
+RUN a2enmod rewrite
+COPY apache-config.conf /etc/apache2/sites-available/000-default.conf
+
+# Establecer directorio de trabajo
+WORKDIR /var/www/html
+
+# Copiar archivos del backend
+COPY backend/ .
+
+# Instalar dependencias
+RUN composer install --no-dev --optimize-autoloader
+
+# Crear base de datos SQLite
+RUN touch database/database.sqlite
+
+# Configurar permisos
+RUN chown -R www-data:www-data storage bootstrap/cache database \
+    && chmod -R 775 storage bootstrap/cache database
+
+# Copiar script de inicio
+COPY start-backend.sh /start.sh
+RUN chmod +x /start.sh
+
+EXPOSE 80
+
+CMD ["/start.sh"]
